@@ -1,0 +1,321 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NotebookLM Adder Debug</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .debug-container {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      max-width: 800px;
+      margin: 0 auto;
+    }
+    .button {
+      padding: 10px 20px;
+      margin: 5px;
+      border: none;
+      border-radius: 4px;
+      background: #1976d2;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .button:hover {
+      background: #1565c0;
+    }
+    .log {
+      background: #000;
+      color: #0f0;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 400px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .error {
+      background: #fee;
+      color: #c33;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+    .success {
+      background: #efe;
+      color: #363;
+      padding: 10px;
+      border-radius: 4px;
+      margin: 10px 0;
+    }
+  </style>
+</head>
+<body>
+  <div class="debug-container">
+    <h1>NotebookLM Adder Debug Tool</h1>
+    <p>この画面では拡張機能の認証とAPIテストができます。</p>
+    
+    <h3>手順:</h3>
+    <ol>
+      <li>NotebookLM (https://notebooklm.google.com) でログインしてください</li>
+      <li>「認証トークンをクリア」ボタンをクリック</li>
+      <li>「認証トークンを取得」ボタンをクリック</li>
+      <li>「ノートブック一覧を取得」ボタンをクリック</li>
+    </ol>
+
+    <div>
+      <button class="button" onclick="clearAuth()">認証トークンをクリア</button>
+      <button class="button" onclick="getAuth()">認証トークンを取得</button>
+      <button class="button" onclick="testListNotebooks()">ノートブック一覧を取得</button>
+      <button class="button" onclick="openNotebookLM()">NotebookLMを開く</button>
+      <button class="button" onclick="clearLog()">ログをクリア</button>
+    </div>
+
+    <div id="status"></div>
+    <div id="log" class="log">デバッグログが表示されます...\n</div>
+  </div>
+
+  <script>
+    let authToken = null;
+    
+    function log(message) {
+      const logElement = document.getElementById('log');
+      const timestamp = new Date().toLocaleTimeString();
+      logElement.textContent += `[${timestamp}] ${message}\n`;
+      logElement.scrollTop = logElement.scrollHeight;
+      console.log(message);
+    }
+    
+    function showStatus(message, type = 'info') {
+      const statusElement = document.getElementById('status');
+      statusElement.className = type;
+      statusElement.textContent = message;
+    }
+    
+    function clearLog() {
+      document.getElementById('log').textContent = 'ログをクリアしました...\n';
+    }
+    
+    async function clearAuth() {
+      try {
+        await chrome.storage.local.clear();
+        authToken = null;
+        log('認証トークンをクリアしました');
+        showStatus('認証トークンをクリアしました', 'success');
+      } catch (error) {
+        log(`認証クリアエラー: ${error.message}`);
+        showStatus(`エラー: ${error.message}`, 'error');
+      }
+    }
+    
+    async function getAuth() {
+      try {
+        log('認証トークンを取得中...');
+        
+        const response = await chrome.runtime.sendMessage({ action: 'getAuthToken' });
+        log(`バックグラウンドスクリプト応答: ${JSON.stringify(response)}`);
+        
+        if (response.success && response.token) {
+          authToken = response.token;
+          log(`認証トークン取得成功: ${response.token.substring(0, 20)}...`);
+          showStatus('認証トークンを取得しました', 'success');
+        } else {
+          throw new Error(response.error || '認証トークンの取得に失敗');
+        }
+      } catch (error) {
+        log(`認証取得エラー: ${error.message}`);
+        showStatus(`エラー: ${error.message}`, 'error');
+      }
+    }
+    
+    async function testListNotebooks() {
+      if (!authToken) {
+        showStatus('先に認証トークンを取得してください', 'error');
+        return;
+      }
+      
+      try {
+        log('ノートブック一覧を取得中...');
+        log(`使用するトークン: ${authToken.substring(0, 20)}...`);
+        
+        // NotebookLM APIクライアントを作成
+        const client = new NotebookLMClient(authToken);
+        const notebooks = await client.listNotebooks();
+        
+        log(`ノートブック一覧取得成功: ${notebooks.length}件`);
+        log(`ノートブック: ${JSON.stringify(notebooks, null, 2)}`);
+        showStatus(`ノートブック ${notebooks.length}件を取得しました`, 'success');
+        
+      } catch (error) {
+        log(`ノートブック取得エラー: ${error.message}`);
+        showStatus(`エラー: ${error.message}`, 'error');
+      }
+    }
+    
+    function openNotebookLM() {
+      chrome.tabs.create({ url: 'https://notebooklm.google.com' });
+      log('NotebookLMを新しいタブで開きました');
+    }
+    
+    // NotebookLMクライアントのコピー（デバッグ用）
+    class NotebookLMClient {
+      constructor(token) {
+        this.token = token;
+        this.authParams = {
+          bl: 'boq_assistant-bard-web-server_20240101.00_p0',
+          _reqid: Math.floor(Math.random() * 100000),
+          rt: 'c'
+        };
+      }
+      
+      async listNotebooks() {
+        const rpcs = [{
+          id: 'oq7oJd',
+          params: []
+        }];
+        
+        const results = await this.execute(rpcs);
+        
+        // レスポンス構造の詳細解析
+        if (results && Array.isArray(results)) {
+          for (let i = 0; i < results.length; i++) {
+            log(`Response[${i}]: ${JSON.stringify(results[i])}`);
+            
+            if (results[i] && Array.isArray(results[i])) {
+              const responseData = results[i];
+              
+              for (let j = 0; j < responseData.length; j++) {
+                const item = responseData[j];
+                if (Array.isArray(item) && item.length > 0) {
+                  log(`Checking item[${j}]: ${JSON.stringify(item)}`);
+                  
+                  if (Array.isArray(item[0]) && item[0].length >= 2) {
+                    const notebooks = [];
+                    for (const notebook of item) {
+                      if (Array.isArray(notebook) && notebook.length >= 2) {
+                        notebooks.push({
+                          id: notebook[0],
+                          name: notebook[1]
+                        });
+                      }
+                    }
+                    if (notebooks.length > 0) {
+                      log(`Found notebooks: ${JSON.stringify(notebooks)}`);
+                      return notebooks;
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+        
+        return [];
+      }
+      
+      async execute(rpcs) {
+        const url = new URL('https://notebooklm.google.com/_/LabsTailwindUi/data/batchexecute');
+        url.searchParams.set('rpcids', rpcs.map(rpc => rpc.id).join(','));
+        url.searchParams.set('source-path', '/');
+        url.searchParams.set('f.sid', Math.random().toString(36).substring(2));
+        url.searchParams.set('bl', this.authParams.bl);
+        url.searchParams.set('hl', 'ja');
+        url.searchParams.set('soc-app', '165');
+        url.searchParams.set('soc-platform', '1');
+        url.searchParams.set('soc-device', '1');
+        url.searchParams.set('_reqid', this.authParams._reqid.toString());
+        url.searchParams.set('rt', 'c');
+
+        const requestBody = this.buildRequestBody(rpcs);
+        
+        log(`API Request URL: ${url.toString()}`);
+        log(`Request Body Length: ${requestBody.length}`);
+        
+        const response = await fetch(url.toString(), {
+          method: 'POST',
+          credentials: 'include',
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+            'X-Same-Domain': '1',
+            'X-Goog-BatchExecute-Bgr': this.authParams.bl,
+            'Origin': 'https://notebooklm.google.com',
+            'Referer': 'https://notebooklm.google.com/',
+          },
+          body: requestBody
+        });
+
+        log(`Response Status: ${response.status} ${response.statusText}`);
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          log(`Error Response: ${errorText.substring(0, 1000)}`);
+          throw new Error(`API Error: ${response.status} ${response.statusText}`);
+        }
+
+        const text = await response.text();
+        log(`Response Length: ${text.length}`);
+        log(`Response Preview: ${text.substring(0, 500)}...`);
+        
+        return this.parseResponse(text);
+      }
+      
+      buildRequestBody(rpcs) {
+        const requests = rpcs.map(rpc => [
+          rpc.id,
+          JSON.stringify(rpc.params),
+          null,
+          "generic"
+        ]);
+        
+        const payload = JSON.stringify([requests]);
+        log(`Request payload: ${payload}`);
+        return `f.req=${encodeURIComponent(payload)}&at=${this.getAtToken()}`;
+      }
+      
+      getAtToken() {
+        if (this.token && this.token.startsWith('AF')) {
+          log(`Using AT token: ${this.token.substring(0, 10)}...`);
+          return this.token;
+        }
+        
+        log('Using session-based auth (no AT token)');
+        return '';
+      }
+      
+      parseResponse(text) {
+        try {
+          let cleanText = text;
+          
+          if (cleanText.startsWith(')]}\'')) {
+            cleanText = cleanText.substring(4);
+          }
+          
+          log(`Cleaned response text: ${cleanText.substring(0, 200)}...`);
+          
+          const parsed = JSON.parse(cleanText);
+          log(`Parsed response: ${JSON.stringify(parsed)}`);
+          
+          return parsed;
+        } catch (error) {
+          log(`Parse error: ${error.message}`);
+          log(`Raw text: ${text.substring(0, 500)}`);
+          throw new Error(`レスポンスのパースに失敗しました: ${error.message}`);
+        }
+      }
+    }
+    
+    // 初期化
+    log('デバッグツールを初期化しました');
+    log('先にNotebookLMでログインしてから、認証トークンを取得してください');
+  </script>
+</body>
+</html>

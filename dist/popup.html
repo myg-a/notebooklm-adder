@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NotebookLM Adder</title>
+  <style>
+    body {
+      width: 400px;
+      min-height: 500px;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      font-size: 14px;
+      background: #f5f5f5;
+    }
+    
+    #app {
+      width: 100%;
+      height: 100%;
+    }
+    
+    /* タブスタイル */
+    .tabs {
+      display: flex;
+      background: white;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    
+    .tab {
+      flex: 1;
+      padding: 12px 16px;
+      text-align: center;
+      cursor: pointer;
+      border: none;
+      background: none;
+      font-size: 14px;
+      color: #666;
+      transition: all 0.2s;
+    }
+    
+    .tab:hover {
+      background: #f5f5f5;
+    }
+    
+    .tab.active {
+      color: #1976d2;
+      border-bottom: 2px solid #1976d2;
+    }
+    
+    /* コンテンツエリア */
+    .content {
+      padding: 16px;
+      background: white;
+      margin: 16px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
+    
+    /* ノートブック選択 */
+    .notebook-selector {
+      margin-bottom: 16px;
+    }
+    
+    .dropdown {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+      background: white;
+    }
+    
+    /* リンクリスト */
+    .link-list {
+      max-height: 300px;
+      overflow-y: auto;
+    }
+    
+    .link-item {
+      display: flex;
+      align-items: start;
+      padding: 8px;
+      border-bottom: 1px solid #f0f0f0;
+    }
+    
+    .link-item:hover {
+      background: #f9f9f9;
+    }
+    
+    .link-item input[type="checkbox"] {
+      margin-right: 8px;
+      margin-top: 2px;
+    }
+    
+    .link-content {
+      flex: 1;
+      overflow: hidden;
+    }
+    
+    .link-title {
+      font-weight: 500;
+      display: block;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    
+    .link-domain {
+      color: #666;
+      font-size: 12px;
+    }
+    
+    /* ボタン */
+    .button {
+      padding: 10px 16px;
+      border: none;
+      border-radius: 4px;
+      font-size: 14px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    
+    .button-primary {
+      background: #1976d2;
+      color: white;
+    }
+    
+    .button-primary:hover {
+      background: #1565c0;
+    }
+    
+    .button-primary:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+    }
+    
+    .button-secondary {
+      background: #f5f5f5;
+      color: #333;
+    }
+    
+    .button-secondary:hover {
+      background: #e0e0e0;
+    }
+    
+    /* ローディング */
+    .loading {
+      text-align: center;
+      padding: 32px;
+      color: #666;
+    }
+    
+    .loading-spinner {
+      width: 24px;
+      height: 24px;
+      border: 3px solid #f3f3f3;
+      border-top: 3px solid #1976d2;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+      margin: 0 auto 16px;
+    }
+    
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+    
+    /* エラーメッセージ */
+    .error {
+      background: #fee;
+      color: #c33;
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 16px;
+    }
+    
+    /* 成功メッセージ */
+    .success {
+      background: #efe;
+      color: #363;
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 16px;
+    }
+    
+    /* 追加スタイル */
+    .page-info {
+      background: #f9f9f9;
+      padding: 12px;
+      border-radius: 4px;
+      margin-bottom: 16px;
+    }
+    
+    .page-title {
+      font-weight: 500;
+      margin-bottom: 4px;
+    }
+    
+    .page-url {
+      font-size: 12px;
+      color: #666;
+      word-break: break-all;
+    }
+    
+    .input-group {
+      margin-bottom: 16px;
+    }
+    
+    .input-group label {
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 500;
+    }
+    
+    .input-group input {
+      width: 100%;
+      padding: 8px 12px;
+      border: 1px solid #ddd;
+      border-radius: 4px;
+      font-size: 14px;
+    }
+    
+    .link-actions {
+      margin-bottom: 12px;
+      display: flex;
+      gap: 8px;
+    }
+    
+    .link-actions button {
+      flex: 1;
+    }
+    
+    .empty-state {
+      text-align: center;
+      color: #666;
+      padding: 32px 16px;
+      font-style: italic;
+    }
+  </style>
+</head>
+<body>
+  <div id="app">
+    <div class="loading">
+      <div class="loading-spinner"></div>
+      <div>読み込み中...</div>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html>

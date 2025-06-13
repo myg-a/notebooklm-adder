@@ -1,0 +1,27 @@
+{
+  "name": "notebooklm-adder",
+  "version": "1.0.0",
+  "description": "Chrome extension to add web pages and links to NotebookLM",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Running tests...\" && node tests/run-tests.js",
+    "test:unit": "node tests/basic-functionality-test.js && node tests/popup-component-test.js && node tests/content-script-test.js && node tests/chrome-api-test.js && node tests/link-list-test.js && node tests/notebook-selector-test.js",
+    "test:integration": "node tests/integration-test.js",
+    "test:e2e": "node tests/e2e-test.js",
+    "test:all": "npm run test:unit && npm run test:integration && npm run test:e2e",
+    "build": "node scripts/build.js",
+    "dev": "webpack --mode=development --watch",
+    "package": "node scripts/package.js",
+    "clean": "rm -rf dist/ *.zip"
+  },
+  "dependencies": {
+    "tsx": "^4.0.0"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.246",
+    "ts-loader": "^9.4.4",
+    "typescript": "^5.0.0",
+    "webpack": "^5.88.0",
+    "webpack-cli": "^5.1.0"
+  }
+}

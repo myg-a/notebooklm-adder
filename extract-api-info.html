@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NotebookLM API Info Extractor</title>
+  <style>
+    body {
+      font-family: monospace;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    .container {
+      background: white;
+      padding: 20px;
+      border-radius: 8px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+      max-width: 1000px;
+      margin: 0 auto;
+    }
+    .button {
+      padding: 10px 20px;
+      margin: 5px;
+      border: none;
+      border-radius: 4px;
+      background: #1976d2;
+      color: white;
+      cursor: pointer;
+      font-size: 14px;
+    }
+    .button:hover {
+      background: #1565c0;
+    }
+    .log {
+      background: #000;
+      color: #0f0;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 12px;
+      max-height: 600px;
+      overflow-y: auto;
+      white-space: pre-wrap;
+    }
+    .info-box {
+      background: #e3f2fd;
+      padding: 15px;
+      border-radius: 4px;
+      margin: 10px 0;
+      border-left: 4px solid #1976d2;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>NotebookLM API Info Extractor</h1>
+    
+    <div class="info-box">
+      <h3>手順:</h3>
+      <ol>
+        <li>NotebookLM (https://notebooklm.google.com) を開いてログインしてください</li>
+        <li>F12で開発者ツールを開いてください</li>
+        <li>Networkタブを選択してください</li>
+        <li>「API情報を抽出」ボタンをクリックしてください</li>
+        <li>NotebookLMページで何かアクション（ノートブック作成など）を行ってください</li>
+        <li>Networkタブで「batchexecute」リクエストを探してください</li>
+      </ol>
+    </div>
+
+    <div>
+      <button class="button" onclick="extractApiInfo()">API情報を抽出</button>
+      <button class="button" onclick="openNotebookLM()">NotebookLMを開く</button>
+      <button class="button" onclick="clearLog()">ログをクリア</button>
+      <button class="button" onclick="interceptNetworkRequests()">ネットワーク監視開始</button>
+    </div>
+
+    <div id="log" class="log">API情報抽出ツールを初期化しました...\n</div>
+  </div>
+
+  <script>
+    function log(message) {
+      const logElement = document.getElementById('log');
+      const timestamp = new Date().toLocaleTimeString();
+      logElement.textContent += `[${timestamp}] ${message}\n`;
+      logElement.scrollTop = logElement.scrollHeight;
+      console.log(message);
+    }
+    
+    function clearLog() {
+      document.getElementById('log').textContent = 'ログをクリアしました...\n';
+    }
+    
+    function openNotebookLM() {
+      chrome.tabs.create({ url: 'https://notebooklm.google.com' });
+      log('NotebookLMを新しいタブで開きました');
+    }
+    
+    async function extractApiInfo() {
+      try {
+        log('NotebookLMページからAPI情報を抽出中...');
+        
+        // NotebookLMのタブを探す
+        const tabs = await chrome.tabs.query({ url: 'https://notebooklm.google.com/*' });
+        
+        if (tabs.length === 0) {
+          log('NotebookLMのタブが見つかりません。先にNotebookLMを開いてください。');
+          return;
+        }
+        
+        const tab = tabs[0];
+        log(`NotebookLMタブを発見: ${tab.title}`);
+        
+        // スクリプトを実行してページ情報を抽出
+        const results = await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          func: () => {
+            const info = {
+              url: window.location.href,
+              userAgent: navigator.userAgent,
+              cookies: document.cookie,
+              scripts: [],
+              networkRequests: [],
+              pageStructure: {}
+            };
+            
+            // ページ内のスクリプトを分析
+            const scripts = document.querySelectorAll('script');
+            for (const script of scripts) {
+              const content = script.textContent || script.innerHTML;
+              
+              // RPC IDを探す
+              const rpcMatches = content.match(/["'][\w]{6}["']/g);
+              if (rpcMatches && rpcMatches.length > 0) {
+                info.scripts.push({
+                  type: 'RPC_IDS',
+                  matches: rpcMatches.slice(0, 20) // 最初の20個だけ
+                });
+              }
+              
+              // batchexecuteパターンを探す
+              const batchMatches = content.match(/batchexecute.*?rpcids/g);
+              if (batchMatches) {
+                info.scripts.push({
+                  type: 'BATCH_EXECUTE',
+                  matches: batchMatches
+                });
+              }
+              
+              // _reqidパターンを探す
+              const reqidMatches = content.match(/_reqid.*?\d+/g);
+              if (reqidMatches) {
+                info.scripts.push({
+                  type: 'REQID',
+                  matches: reqidMatches.slice(0, 5)
+                });
+              }
+            }
+            
+            // DOMからAPI関連要素を探す
+            const apiElements = document.querySelectorAll('[data-rpc], [data-api], [data-endpoint]');
+            info.pageStructure.apiElements = Array.from(apiElements).map(el => ({
+              tag: el.tagName,
+              attributes: Object.fromEntries(Array.from(el.attributes).map(attr => [attr.name, attr.value]))
+            }));
+            
+            // Windowオブジェクトから情報を抽出
+            if (window.WIZ_global_data) {
+              info.pageStructure.wizData = {
+                keys: Object.keys(window.WIZ_global_data),
+                hasRpcData: JSON.stringify(window.WIZ_global_data).includes('rpc')
+              };
+            }
+            
+            return info;
+          }
+        });
+        
+        if (results && results[0] && results[0].result) {
+          const info = results[0].result;
+          
+          log(`URL: ${info.url}`);
+          log(`User Agent: ${info.userAgent}`);
+          log(`Cookies: ${info.cookies ? 'Found' : 'None'}`);
+          log('');
+          
+          log('== Script Analysis ==');
+          info.scripts.forEach((script, index) => {
+            log(`Script ${index + 1} (${script.type}):`);
+            script.matches.forEach(match => log(`  ${match}`));
+            log('');
+          });
+          
+          log('== Page Structure ==');
+          log(`API Elements: ${info.pageStructure.apiElements ? info.pageStructure.apiElements.length : 0}`);
+          if (info.pageStructure.wizData) {
+            log(`WIZ Global Data Keys: ${info.pageStructure.wizData.keys.join(', ')}`);
+            log(`Has RPC Data: ${info.pageStructure.wizData.hasRpcData}`);
+          }
+          
+          log('');
+          log('=== 推奨される次のステップ ===');
+          log('1. NotebookLMページで開発者ツール（F12）を開く');
+          log('2. Networkタブを選択');
+          log('3. ノートブック作成やページ読み込みのアクションを実行');
+          log('4. "batchexecute" で検索してリクエストを見つける');
+          log('5. Request Payloadを確認してRPC IDを特定');
+          
+        } else {
+          log('スクリプト実行に失敗しました');
+        }
+        
+      } catch (error) {
+        log(`エラー: ${error.message}`);
+      }
+    }
+    
+    async function interceptNetworkRequests() {
+      log('ネットワーク監視を開始しています...');
+      log('NotebookLMページで何かアクションを実行してください。');
+      log('batchexecuteリクエストを検出したら報告します。');
+      
+      // 実際のネットワーク監視は拡張機能の背景スクリプトで行う必要がある
+      // ここでは手動での監視を促す
+      log('');
+      log('【手動監視手順】');
+      log('1. NotebookLMタブを開く');
+      log('2. F12で開発者ツールを開く');
+      log('3. Networkタブを選択');
+      log('4. "batchexecute"で検索');
+      log('5. ノートブック作成などのアクションを実行');
+      log('6. 新しいリクエストが表示されたらクリックして詳細を確認');
+    }
+    
+    // 初期化メッセージ
+    log('API情報抽出ツールが準備できました');
+    log('先にNotebookLMにログインしてから「API情報を抽出」をクリックしてください');
+  </script>
+</body>
+</html>
